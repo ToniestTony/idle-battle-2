@@ -1,0 +1,1634 @@
+var socket = io();
+			var socketId=undefined;
+			
+			//Server updates
+			var name="";
+			var coins=0;
+			var coinsPer=1;
+			var coinsEne=0;
+			var coinsPerEne=1;
+			var coinsPerIni=1;
+			var coinsPerIniEne=1;
+			var fps=1000/15;
+			
+			var cost=5;
+			var costEne=5;
+			var costIni=5;
+			
+			var cost2=15;
+			var cost2Ene=15;
+			var cost2Ini=15;
+			
+			var cost3=40;
+			var cost3Ene=40;
+			var cost3Ini=40;
+			
+			var bought=0;
+			var boughtEne=0;
+			
+			var bought2=0;
+			var bought2Ene=0;
+			
+			var rate=1;
+			var rateMax=3;
+			
+			var clientObj={name:"",coins:0,wins:0,losses:0,playing:false,c:"black"};
+			var serverObjs={};
+			
+			socket.on("id",function(id){
+				socketId=id;
+			})
+			
+			socket.on("disconnected",function(senderId){
+				
+				if(app.state=="battle" && app.playing==senderId){
+					app.disconnected=senderId;
+				}else if(app.state=="menu" && (app.inviteReceived==senderId || app.inviteSent==senderId)){
+					app.inviteSent=undefined;
+					app.inviteReceived=undefined;
+					
+					app.playing=undefined;
+					
+					delete serverObjs[senderId];
+				}else{
+					delete serverObjs[senderId];
+				}
+				
+			})
+			
+			var serverInterval=setInterval(updateData,fps);
+			
+			function updateData(){
+				socket.emit("update",clientObj);
+			}
+			
+			socket.on("getData",function(senderId,serverObj){
+				serverObjs[senderId]=serverObj;
+				app.coinUpdate=true;
+				
+				
+			})
+			
+			socket.on("invite",function(senderId){
+				app.inviteReceived=senderId;
+				app.state="menu";
+				jt.clearPart();
+				
+			})
+			
+			socket.on("refused",function(senderId){
+				app.inviteSent=undefined;
+				jt.clearPart();
+			})
+			
+			socket.on("cancel",function(senderId){
+				app.inviteReceived=undefined;
+				jt.clearPart();
+			})
+			
+			socket.on("accept",function(senderId,time){
+				socket.emit("delay",senderId,app.delay);
+				app.delaySent=true;
+				app.time=app.waitTime*60;
+				
+				app.win=false;
+				app.lose=false;
+				app.started=false;
+				
+				app.change=undefined;
+				app.changeEne=undefined;
+				app.message=undefined;
+				app.messageEne=undefined;
+				
+				app.sabotage=0;
+				app.sabotageEne=0;
+				
+				app.state="battle";
+				app.playing=senderId;
+			})
+			
+			socket.on("delay",function(delay){
+				if(app.accepted){
+					socket.emit("delay",app.playing,app.delay);
+				}
+				
+				app.delaySent=false;
+				app.delay=jt.round(app.delayResponse/2,0);
+				
+				if(app.accepted){
+					app.time+=app.delay;
+				}
+			})
+			
+			socket.on("upgrade",function(senderId,money){
+				costEne=costEne*2;
+				addChange(-money,false)
+				coinsEne-=money;
+				jt.stopPlay("upgrade")
+				//addChange(rate,true,true)
+				addMessage(serverObjs[senderId].name+" upgraded!",false)
+				coinsPerEne+=rate;
+			})
+			
+			socket.on("sabotage",function(senderId){
+				app.sabotage=app.sabotageMax;
+				boughtEne++;
+				jt.stopPlay("sabotage")
+				addMessage(serverObjs[senderId].name+" used a sabotage!",false)
+			})
+			
+			socket.on("steal",function(senderId,money){
+				coinsEne+=money;
+				coins-=money;
+				bought2Ene++;
+				addChange(-money,true)
+				addChange(money,false)
+				jt.stopPlay("steal")
+				addMessage(serverObjs[senderId].name+" stole half!",false)
+			})
+			
+		  
+
+			var app={
+				w:600,
+				h:400,
+				
+				state:"menu",
+				inviteSent:undefined,
+				inviteReceived:undefined,
+				
+				page:0,
+				
+				playing:undefined,
+				disconnected:undefined,
+				started:false,
+				
+				waitTime:5,
+				time:0,
+				delay:undefined,
+				
+				delayResponse:0,
+				delaySent:false,
+				accepted:false,
+				
+				change:undefined,
+				message:undefined,
+				timerMax:240,
+				messageTimerMax:240,
+				
+				win:false,
+				lose:false,
+				
+				coinUpdate:false,
+				
+				sabotageMax:300,
+				sabotage:0,
+				sabotageEne:0,
+				
+				secret:0,
+				secretNumbers:[0,0],
+				secret2Points:undefined,
+				secret3Start:false,
+				
+				wins:0,
+				losses:0,
+				version:"0.8.5",
+				changes:"Added secrets",
+				//setup is called when the game has finished loading
+				setup:function(){
+					//jt.fullscreen(false);
+					while(!/\S/.test(name)){
+						name=window.prompt("What is your username? (12 characters max)").substring(0,12);
+						clientObj.name=name;
+					}
+					
+					if(localStorage.getItem("name")!==null){
+						if(clientObj.name==localStorage.getItem("name")){
+							this.wins=localStorage.getItem("wins");
+							this.losses=localStorage.getItem("losses");
+							clientObj.wins=this.wins;
+							clientObj.losses=this.losses;
+						}
+					}
+					/*clientObj.name="Test"
+					this.state="secret4";*/
+				},
+				//update is called every frame
+				update:function(){
+				
+					jt.bg("white");
+					
+					if(this.delaySent){
+						this.delayResponse++;
+					}else{
+						this.delayResponse=0;
+					}
+					
+					if(this.state!="menu"){
+						clientObj.battle=true;
+					}else{
+						clientObj.battle=false;
+					}
+					
+					
+					if(this.state=="menu"){
+						//Menu title
+						jt.fontSize(64);
+						jt.text("IDLE DUEL",jt.w()/2,20+jt.waveY()*10,"black","center");
+						jt.fontSize(16);
+						jt.text("v"+this.version,jt.w()-5,5,"black","right");
+						jt.text(this.changes,jt.w()-5,20,"black","right",16,0,25,15);
+						
+						jt.checkAlarm("secret",true);
+						
+												
+						if(jt.mPress(125,0,jt.w()-250,90) || jt.tPress(125,0,jt.w()-250,90,true)){
+							jt.stopPlay("sabotage")
+							jt.shake(10);
+							if(jt.isAlarm("secret")){
+								this.secret++;
+								jt.alarm("secret",60);
+							}else{
+								this.secret=1;
+								jt.alarm("secret",60);
+							}
+						}
+						
+						//Volume control
+						var btnMinus={x:jt.w()-110,y:40,w:20,h:20,c:[150,150,150]}
+						var btnPlus={x:jt.w()-30,y:40,w:20,h:20,c:[150,150,150]}
+						var btnTest={x:jt.w()-80,y:65,w:40,h:20,c:[150,150,150]}
+						
+						if(jt.mIn(btnTest)){btnTest.c=[200,200,200]}
+						
+						if(jt.mPress(btnTest) || jt.tPress(btnTest)){
+							jt.stopPlay("steal");
+						}
+						
+						jt.shape(btnTest)
+						
+						if(jt.mIn(btnMinus)){btnMinus.c=[200,200,200]}
+						
+						if(jt.mPress(btnMinus) || jt.tPress(btnMinus)){
+							var vol=jt.volume();
+							vol=jt.stay(jt.round(vol-0.1,1),0,1);
+							jt.volume(vol);
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.shape(btnMinus)
+						
+						if(jt.mIn(btnPlus)){btnPlus.c=[200,200,200]}
+						
+						if(jt.mPress(btnPlus) || jt.tPress(btnPlus)){
+							var vol=jt.volume();
+							vol=jt.stay(jt.round(vol+0.1,1),0,1);
+							jt.volume(vol);
+							jt.stopPlay("sabotage");
+						}
+						
+						if(this.secret>=8){
+							this.secret=0;
+							this.state="secret";
+							this.secretNumbers=[0,0];
+							this.secret2Points=undefined;
+							this.secret3Start=false;
+						}
+						
+						jt.shape(btnPlus)
+						jt.fontSize(20);
+						
+						jt.text("-",btnMinus.x+btnMinus.w/2,btnMinus.y+2,"black","center")
+						jt.text("+",btnPlus.x+btnPlus.w/2,btnPlus.y+2,"black","center")
+						
+						jt.fontSize(12);
+						jt.text("Test",btnTest.x+btnTest.w/2,btnTest.y+4,"black","center")
+						jt.text("Volume:",jt.w()-60,40,"black","center")
+						jt.text((jt.volume()*100)+"%",jt.w()-60,50,"black","center")
+						
+						//check if there is more than 4 players
+						var len=Object.keys(serverObjs).length;
+						jt.fontSize(20)
+						var maxPage=(len+1)%4;
+						if(len<=4){
+							this.page=0;
+						}else{
+							if(this.page<(len/4)-1){
+								var btnNext={x:jt.w()-45,y:jt.h()*(3/4)-20,w:40,h:40,c:[150,150,150],text:">"};
+								
+								if(jt.mIn(btnNext) && this.inviteSent==undefined && this.inviteReceived==undefined){
+									btnNext.c=[200,200,200];
+								}
+								
+								if(jt.mPress(btnNext) || jt.tPress(btnNext)){
+									this.page++;
+									jt.stopPlay("steal");
+								}
+								
+								
+								jt.rect(btnNext)
+								jt.text(btnNext.text,btnNext.x+btnNext.w/2,btnNext.y+(btnNext.h/2-jt.fontSize()/2),"black","center")
+							}
+							if(this.page>0){
+								var btnPrev={x:5,y:jt.h()*(3/4)-20,w:40,h:40,c:[150,150,150],text:"<"};
+								
+								if(jt.mIn(btnPrev) && this.inviteSent==undefined && this.inviteReceived==undefined){
+									btnPrev.c=[200,200,200];
+								}
+								
+								if(jt.mPress(btnPrev) || jt.tPress(btnPrev)){
+									this.page--;
+									jt.stopPlay("steal");
+								}
+								
+								
+								jt.rect(btnPrev)
+								jt.text(btnPrev.text,btnPrev.x+btnPrev.w/2,btnPrev.y+(btnPrev.h/2-jt.fontSize()/2),"black","center")
+							}
+						}
+						
+						//logic
+						var keys = Object.keys(serverObjs);
+						for (var i = this.page*4; i < (this.page+1)*4; i++) {
+							if(i<=len-1){
+								var val = serverObjs[keys[i]];
+								var index=(i%4);
+								// use val
+								if(val.name!="" && val.battle==false){
+									if((jt.mPress(50,200+(index*50),jt.w()-100,40) || jt.tPress(50,200+(index*50),jt.w()-100,40)) && this.inviteSent==undefined && this.inviteReceived==undefined){
+										//send invite to other player
+										socket.emit("invite",keys[i]);
+										this.inviteSent=keys[i];
+										jt.clearPart();
+										jt.stopPlay("steal");
+									}
+								}
+							}else{
+								break;
+							}
+						}
+					
+						//draw
+						
+						//draw other players
+						jt.fontSize(20);
+						for (var i = this.page*4; i < (this.page+1)*4; i++) {
+							if(i<=len-1){
+								var val = serverObjs[keys[i]];
+								var index=(i%4);
+								// use val
+								if(val.name!=""){
+									if(jt.mIn(50,200+(index*50),jt.w()-100,40) && this.inviteSent==undefined && this.inviteReceived==undefined && val.battle==false){
+										jt.rect(50,200+(index*50),jt.w()-100,40,[200,200,200])
+									}else{
+										jt.rect(50,200+(index*50),jt.w()-100,40,[150,150,150])
+									}
+									var text=val.name+" (W: "+val.wins+"/ L: "+val.losses+")";
+									if(val.battle){
+										text+=" (playing)";
+									}
+									jt.text(text,jt.w()/2,213+(index*50),val.c,"center")
+									
+								}
+							}else{
+								break;
+							}
+						}
+						
+						var btn={x:jt.w()/2+10,y:100,w:240,h:40,c:[150,150,150]}
+						
+						if(jt.mIn(btn)){
+							btn.c=[200,200,200]
+						}
+						
+						if((jt.mPress(btn) || jt.tPress(btn)) && this.inviteSent==undefined && this.inviteReceived==undefined){
+							this.state="sandbox"
+							jt.frame(0);
+							coins=0;
+							coinsPer=coinsPerIni;
+							coinsEne=0;
+							coinsPerEne=coinsPerIniEne;
+							this.win=false;
+							this.lose=false;
+							this.coinUpdate=false;
+							jt.stopPlay("steal");
+							
+							cost=costIni;
+							costEne=costIni;
+							
+							cost2=cost2Ini;
+							cost2Ene=cost2Ini;
+							
+							cost3=cost3Ini;
+							cost3Ene=cost3Ini;
+							
+							bought=0;
+							boughtEne=0;
+							
+							bought2=0;
+							bought2Ene=0;
+						}
+						
+						jt.rect(btn.x,btn.y,btn.w,btn.h,btn.c)
+						
+						jt.text("Practice",jt.w()/2+10+120,110,"black","center")
+						
+						jt.text(clientObj.name+" (W: "+clientObj.wins+"/ L: "+clientObj.losses+")",jt.w()/2-10-120,110,clientObj.c,"center")
+						
+						jt.text("Click on a name below to challenge them:",jt.w()/2,170,"black","center")
+						
+						//received invite
+						if(this.inviteReceived!=undefined){
+							clientObj.battle=true;
+							jt.bg([0,0,0,0.25])
+						
+							jt.rect(0,jt.h()-40,jt.w(),40,[150,150,150])
+							var name=serverObjs[this.inviteReceived].name;
+							var c=serverObjs[this.inviteReceived].c;
+							jt.text(name+" challenged you!",20,jt.h()-30,c,"left");
+							
+							var c1=[255,255,255];
+							var c2=[255,255,255];
+							
+							if(jt.mIn(jt.w()-200,jt.h()-35,95,30)){
+								c1=[200,200,200]
+							}
+							
+							if(jt.mIn(jt.w()-100,jt.h()-35,95,30)){
+								c2=[200,200,200]
+							}
+							
+							if(jt.mPress(jt.w()-200,jt.h()-35,95,30) || jt.tPress(jt.w()-200,jt.h()-35,95,30)){
+								this.playing=this.inviteReceived;
+								this.time=this.waitTime*60;
+								
+								this.coinUpdate=false;
+								jt.stopPlay("steal");
+								socket.emit("accept",app.inviteReceived,app.time);
+								app.delaySent=true;
+								this.accepted=true;
+								this.state="battle";
+								this.win=false;
+								this.lose=false;
+								this.started=false;
+								app.change=undefined;
+								app.changeEne=undefined;
+								app.message=undefined;
+								app.messageEne=undefined;
+								app.delay=undefined;
+								app.sabotage=0;
+								app.sabotageEne=0;
+							}else if(jt.mPress(jt.w()-100,jt.h()-35,95,30) || jt.tPress(jt.w()-100,jt.h()-35,95,30)){
+								socket.emit("refused",this.inviteReceived);
+								this.inviteReceived=undefined;
+								jt.stopPlay("sabotage");
+							}
+							
+							
+							
+							var part={}
+							part.x=jt.random(0,jt.w());
+							part.y=jt.h()-40;
+							part.w=10;
+							part.h=10;
+							part.vX=jt.random(-1,1,0.1);
+							part.vY=jt.random(-5,-2,0.1)
+							part.c=[255,255,255];
+							part.frames=400;
+							jt.addPart(part);
+							jt.drawPart();
+							
+							jt.rect(jt.w()-200,jt.h()-35,95,30,c1);
+							jt.rect(jt.w()-100,jt.h()-35,95,30,c2);
+							jt.text("Accept",jt.w()-153,jt.h()-30,"black","center");
+							jt.text("Decline",jt.w()-53,jt.h()-30,"black","center");
+							
+							
+						}
+						
+						//sent invite
+						if(this.inviteSent!=undefined){
+							clientObj.battle=true;
+							jt.bg([0,0,0,0.25])
+							
+							var part={}
+							part.x=jt.random(0,jt.w());
+							part.y=jt.h()-40;
+							part.w=10;
+							part.h=10;
+							part.vX=jt.random(-1,1,0.1);
+							part.vY=jt.random(-5,-2,0.1)
+							part.c=[255,255,255];
+							part.frames=400;
+							jt.addPart(part);
+							jt.drawPart();
+						
+							jt.rect(0,jt.h()-40,jt.w(),40,[150,150,150])
+							var name=serverObjs[this.inviteSent].name;
+							jt.text("You challenged "+name+"!",20,jt.h()-30,clientObj.c,"left");
+							
+							var c1=[255,255,255]
+							
+							if(jt.mIn(jt.w()-100,jt.h()-35,95,30)){
+								c1=[200,200,200]
+							}
+							
+							if(jt.mPress(jt.w()-100,jt.h()-35,95,30) || jt.tPress(jt.w()-100,jt.h()-35,95,30)){
+								socket.emit("cancel",this.inviteSent);
+								this.inviteSent=undefined;
+								jt.stopPlay("sabotage");
+							}
+							
+							jt.rect(jt.w()-100,jt.h()-35,95,30,c1);
+							jt.text("Cancel",jt.w()-53,jt.h()-30,"black","center");
+							
+						}
+						
+					}else if(this.state=="sandbox"){
+					
+						if(jt.kPress("enter")){
+							coins+=40;
+							coinsEne+=40;
+						}
+					
+						if(jt.frame()==59 && this.win==false && this.lose==false){
+							coins+=coinsPer
+							coinsEne+=coinsPerEne
+							
+							if(coins>=100){
+								this.win=true;
+							}
+							if(coinsEne>=100){
+								this.lose=true;
+							}
+						}
+						
+						jt.fontSize(16)
+						if(this.win){
+							jt.rect(0,0,jt.w()/2,jt.h(),[127,255,127,0.5])
+							jt.text("Player 1 wins!",jt.w()/4,10,"black","center");
+						}else{
+							jt.text("Player 1",jt.w()/4,10,"black","center");
+						}
+						
+						if(this.lose){
+							jt.rect(jt.w()/2,0,jt.w()/2,jt.h(),[127,255,127,0.5])
+							jt.text("Player 2 wins!",jt.w()/4*3,10,"black","center");
+						}else{
+							jt.text("Player 2",jt.w()/4*3,10,"black","center");
+						}
+						
+						jt.line(jt.w()/2,0,jt.w()/2,jt.h(),2,"black")
+						
+						jt.fontSize(24);
+						var btnBack={x:0,y:25,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBack)){
+							btnBack.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBack) || jt.tPress(btnBack)){
+							this.state="menu";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBack.x,btnBack.y,btnBack.w,btnBack.h,btnBack.c)
+						jt.text("Back",50,35,"black","center")	
+						
+						jt.fontSize(16);
+						
+						jt.drawPart();
+						
+						if(this.sabotage>0){this.sabotage--;}
+						if(this.sabotageEne>0){this.sabotageEne--;}
+						
+						
+						//Sabotage btn
+						
+						var btnAtk={x:jt.w()/4-100,y:jt.h()/2+50,w:200,h:50,c:[150,150,150]};
+						
+						if(this.sabotage<=0 && bought<=2 && !this.win && !this.lose){
+							if(jt.mIn(btnAtk)){
+								btnAtk.c=[200,200,200];
+							}
+							if(jt.mPress(btnAtk) || jt.tPress(btnAtk)){
+								addMessage("Player 1 sabotaged!",true)
+								bought++;
+								this.sabotageEne=this.sabotageMax;
+								jt.stopPlay("sabotage")
+								jt.shake(5);
+								addPart(btnAtk.x,btnAtk.y,btnAtk.w,btnAtk.h,3)
+							}
+							
+							jt.shape(btnAtk)
+							
+							jt.text("Sabotage 5s ("+(3-bought)+" left)",btnAtk.x+btnAtk.w/2,btnAtk.y+btnAtk.h/2-jt.fontSize()/2,"black","center")
+						}
+						
+						//Enemy sabotage btn
+						
+						var btnAtk={x:jt.w()/4*3-100,y:jt.h()/2+50,w:200,h:50,c:[150,150,150]};
+						
+						if(this.sabotageEne<=0 && boughtEne<=2 && !this.win && !this.lose){
+							if(jt.mIn(btnAtk)){
+								btnAtk.c=[200,200,200];
+							}
+							if(jt.mPress(btnAtk) || jt.tPress(btnAtk)){
+								addMessage("Player 2 sabotaged!",false)
+								boughtEne++;
+								this.sabotage=this.sabotageMax;
+								jt.stopPlay("sabotage")
+								jt.shake(5);
+								addPart(btnAtk.x,btnAtk.y,btnAtk.w,btnAtk.h,3)
+							}
+							
+							jt.shape(btnAtk)
+							
+							jt.text("Sabotage 5s ("+(3-boughtEne)+" left)",btnAtk.x+btnAtk.w/2,btnAtk.y+btnAtk.h/2-jt.fontSize()/2,"black","center")
+						}
+						
+						
+						//Upgrade
+						
+						if(this.sabotage<=0 && !this.win && !this.lose){
+							if(cost<=100){
+							
+								var btnUp={x:jt.w()/4-100,y:jt.h()/2-25,w:200,h:50,c:[150,150,150]};
+								
+								if(jt.mIn(btnUp)){
+									btnUp.c=[200,200,200];
+								}
+								if(coins>=cost){
+									if(jt.mPress(btnUp) || jt.tPress(btnUp)){
+										coins-=cost;
+										addChange(-cost,true)
+										//addChange(rate,true,true)
+										addMessage("Player 1 upgraded!",true)
+										coinsPer+=rate;
+										cost=cost*2;
+										jt.stopPlay("upgrade")
+										jt.shake(5);
+										addPart(btnUp.x,btnUp.y,btnUp.w,btnUp.h,3)
+									}
+								}else{
+									btnUp.c=[100,100,100]
+								}
+								jt.shape(btnUp)
+								
+								jt.text("Upgrade +"+rate+"/s ("+cost+" coins)",btnUp.x+btnUp.w/2,btnUp.y+btnUp.h/2-jt.fontSize()/2,"black","center")
+							}
+						}
+						
+						//Enemy upgrade
+						
+						if(this.sabotageEne<=0 && !this.win && !this.lose){
+							if(costEne<=100){
+							
+								var btnUp={x:jt.w()/4*3-100,y:jt.h()/2-25,w:200,h:50,c:[150,150,150]};
+								
+								if(jt.mIn(btnUp)){
+									btnUp.c=[200,200,200];
+								}
+								if(coinsEne>=costEne){
+									if(jt.mPress(btnUp) || jt.tPress(btnUp)){
+										coinsEne-=costEne;
+										addChange(-costEne,false)
+										//addChange(rate,false,true)
+										addMessage("Player 2 upgraded!",false)
+										coinsPerEne+=rate;
+										costEne=costEne*2;
+										jt.stopPlay("upgrade")
+										jt.shake(5);
+										addPart(btnUp.x,btnUp.y,btnUp.w,btnUp.h,3)
+									}
+								}else{
+									btnUp.c=[100,100,100]
+								}
+								jt.shape(btnUp)
+								
+								jt.text("Upgrade +"+rate+"/s ("+costEne+" coins)",btnUp.x+btnUp.w/2,btnUp.y+btnUp.h/2-jt.fontSize()/2,"black","center")
+							}
+						}
+						
+						
+						//Steal half
+						
+						if(this.sabotage<=0 && bought2<=1 && !this.win && !this.lose){
+							var btnHalf={x:jt.w()/4-100,y:jt.h()/2+125,w:200,h:50,c:[150,150,150]};
+							
+							if(jt.mIn(btnHalf)){
+								btnHalf.c=[200,200,200];
+							}
+							
+							if(jt.mPress(btnHalf) || jt.tPress(btnHalf)){
+								var half=jt.round(coinsEne/2,0);
+								coinsEne-=half;
+								coins+=half;
+								addChange(half,true)
+								addChange(-half,false)
+								addMessage("Player 1 stole half!",true)
+								bought2++;
+								jt.stopPlay("steal")
+								jt.shake(5);
+								
+								addPart(btnHalf.x,btnHalf.y,btnHalf.w,btnHalf.h,3)
+							}
+							jt.shape(btnHalf)
+							
+							jt.text("Steal half ("+(2-bought2)+" left)",btnHalf.x+btnHalf.w/2,btnHalf.y+btnHalf.h/2-jt.fontSize()/2,"black","center")
+						}
+						
+						//Enemy steal half
+						
+						if(this.sabotageEne<=0 && bought2Ene<=1 && !this.win && !this.lose){
+							var btnHalf={x:jt.w()/4*3-100,y:jt.h()/2+125,w:200,h:50,c:[150,150,150]};
+							
+							if(jt.mIn(btnHalf)){
+								btnHalf.c=[200,200,200];
+							}
+								
+							if(jt.mPress(btnHalf) || jt.tPress(btnHalf)){
+								var half=jt.round(coins/2,0);
+								coins-=half;
+								coinsEne+=half;
+								addChange(half,false)
+								addChange(-half,true)
+								addMessage("Player 2 stole half!",false)
+								bought2Ene++;
+								jt.stopPlay("steal")
+								jt.shake(5);
+								
+								addPart(btnHalf.x,btnHalf.y,btnHalf.w,btnHalf.h,3)
+							}
+							
+							jt.shape(btnHalf)
+							
+							jt.text("Steal half ("+(2-bought2Ene)+" left)",btnHalf.x+btnHalf.w/2,btnHalf.y+btnHalf.h/2-jt.fontSize()/2,"black","center")
+						}
+						
+						coins=jt.round(coins,1)
+						coinsPer=jt.round(coinsPer,1)
+						coinsEne=jt.round(coinsEne,1)
+						coinsPerEne=jt.round(coinsPerEne,1)
+						
+						if(coins<0){coins=0;}
+						if(coinsEne<0){coinsEne=0;}
+						
+						if(coins>=100){
+							this.win=true;
+						}
+						if(coinsEne>=100){
+							this.lose=true;
+						}
+						
+						jt.text("Coins: "+coins+"/100",jt.w()/4,jt.h()/3-50,"black","center");
+						jt.text("Rate: "+coinsPer+"/s",jt.w()/4,jt.h()/3,"black","center");
+						
+						jt.text("Coins: "+coinsEne+"/100",jt.w()/4*3,jt.h()/3-50,"black","center");
+						jt.text("Rate: "+coinsPerEne+"/s",jt.w()/4*3,jt.h()/3,"black","center");
+						
+						jt.fontSize(16);
+						if(this.message!=undefined){
+							var x=jt.w()/4;
+							var alpha=(this.timerMax-this.message.timer)/this.timerMax;
+							var y=50;
+							var text=this.message.msg
+							jt.text(text,x,y,[0,0,0,alpha],"center")
+							
+							this.message.timer++;
+							if(this.message.timer>=this.messageTimerMax){
+								this.message=undefined
+							}
+						}
+						if(this.messageEne!=undefined){
+							var x=jt.w()/4*3;
+							var alpha=(this.timerMax-this.messageEne.timer)/this.timerMax;
+							var y=50;
+							var text=this.messageEne.msg
+							jt.text(text,x,y,[0,0,0,alpha],"center")
+							
+							this.messageEne.timer++;
+							if(this.messageEne.timer>=this.messageTimerMax){
+								this.messageEne=undefined
+							}
+						}
+						
+						jt.fontSize(12);
+						if(this.change!=undefined){
+							this.change.timer++;
+							
+							var x=jt.w()/4;
+							var alpha=(this.timerMax-this.change.timer)/this.timerMax;
+							var c=[255,0,0,alpha]
+							var y=jt.h()/3-50-jt.fontSize()*1.2;
+							var text=this.change.num+"";
+							if(this.change.num>0){
+								text="+"+this.change.num;
+								c=[0,255,0,alpha]
+							}else if(this.change.num==0){
+								c=[127,127,127,alpha]
+							}
+							if(this.change.rate!=undefined){
+								y=jt.h()/3-jt.fontSize()*1.2;
+							}
+							jt.text(text,x,y,c,"center")
+							
+							if(this.change.timer>=this.timerMax){
+								this.change=undefined
+							}
+						}
+						if(this.changeEne!=undefined){
+							this.changeEne.timer++;
+							
+							var x=jt.w()/4*3;
+							var alpha=(this.timerMax-this.changeEne.timer)/this.timerMax;
+							var c=[255,0,0,alpha]
+							var y=jt.h()/3-50-jt.fontSize()*1.2;
+							var text=this.changeEne.num+"";
+							if(this.changeEne.num>0){
+								text="+"+this.changeEne.num;
+								c=[0,255,0,alpha]
+							}else if(this.changeEne.num==0){
+								c=[127,127,127,alpha]
+							}
+							if(this.changeEne.rate!=undefined){
+								y=jt.h()/3-jt.fontSize()*1.2;
+							}
+							jt.text(text,x,y,c,"center")
+							
+							if(this.changeEne.timer>=this.timerMax){
+								this.changeEne=undefined
+							}
+						}
+						
+						if(this.sabotage>0 && !this.win && !this.lose){
+							jt.fontSize(24);
+							jt.text("Sabotaged!",jt.w()/4,jt.h()/2+50,"black","center")
+						}
+						
+						if(this.sabotageEne>0 && !this.win && !this.lose){
+							jt.fontSize(24);
+							jt.text("Sabotaged!",jt.w()*(3/4),jt.h()/2+50,"black","center")
+						}
+						
+						/*coins=jt.round(coins,1)
+						
+						var text="Coins: "+coins+"/100"
+						if(coins>=100){
+							text="You win!"
+						}
+						jt.text(text,jt.w()/2,jt.h()/2-100,"black","center")
+						jt.text("Get 100 coins before your opponent",jt.w()/2,50,"black","center")*/
+					}else if(this.state=="battle"){
+						//battle
+						jt.line(jt.w()/2,0,jt.w()/2,jt.h(),2,"black")
+						
+						//Check if other is still playing
+						if(this.playing!=undefined){
+							
+							//wait 5 second
+							if(!this.started){
+								this.time--;
+								jt.fontSize(16)
+								jt.text(clientObj.name,jt.w()/4,10,clientObj.c,"center");
+								jt.text(serverObjs[this.playing].name,jt.w()/4*3,10,serverObjs[this.playing].c,"center");
+								if(this.time<0){
+									this.started=true;
+									jt.frame(0);
+								}else{
+									//Reset stuff
+									coins=0;
+									coinsPer=coinsPerIni;
+									coinsEne=0;
+									coinsPerEne=coinsPerIniEne;
+									this.win=false;
+									this.lose=false;
+									
+									cost=costIni;
+									costEne=costIni;
+									
+									cost2=cost2Ini;
+									cost2Ene=cost2Ini;
+									
+									cost3=cost3Ini;
+									cost3Ene=cost3Ini;
+									
+									bought=0;
+									boughtEne=0;
+									
+									bought2=0;
+									bought2Ene=0;
+									
+									
+									var timeLeft=this.time;
+									var second=jt.round(timeLeft/60,1);
+									
+									jt.circle(jt.w()/2-75,jt.h()/2-75,150,"white");
+									jt.circleB(jt.w()/2-75,jt.h()/2-75,150,"black",2);
+									jt.fontSize(24);
+									jt.text(second+"s left",jt.w()/2,jt.h()/2-jt.fontSize()/2-10,"black","center")
+									
+									jt.fontSize(14);
+									if(this.delay!=undefined){
+										jt.text("Delay: "+(jt.round(this.delay/60,3))+" s",jt.w()/2,jt.h()/2+12+10);
+									}
+								}
+							}else{
+								//Game is started
+								
+								
+								if(jt.frame()==59 && this.win==false && this.lose==false){
+									coins+=coinsPer;
+									coinsEne+=coinsPerEne;
+								}
+								
+								if(this.coinUpdate){
+									coinsEne=serverObjs[this.playing].coins;
+									this.coinUpdate=false;
+								}
+								clientObj.coins=coins;
+								
+								if(coins>=100){
+									this.win=true;
+								}
+								if(coinsEne>=100){
+									this.lose=true;
+								}
+							
+								//battle
+								
+								jt.fontSize(16)
+								if(this.win){
+									jt.rect(0,0,jt.w()/2,jt.h(),[127,255,127,0.5])
+									jt.text(clientObj.name+" wins!",jt.w()/4,10,clientObj.c,"center");
+								}else{
+									jt.text(clientObj.name,jt.w()/4,10,clientObj.c,"center");
+								}
+								
+								if(this.lose){
+									jt.rect(jt.w()/2,0,jt.w()/2,jt.h(),[127,255,127,0.5])
+									jt.text(serverObjs[this.playing].name+" wins!",jt.w()/4*3,10,serverObjs[this.playing].c,"center");
+								}else{
+									jt.text(serverObjs[this.playing].name,jt.w()/4*3,10,serverObjs[this.playing].c,"center");
+								}
+								
+								if(this.win || this.lose){
+									var btnBack={x:0,y:25,w:100,h:40,c:[150,150,150]}
+									jt.fontSize(24);
+									if(jt.mIn(btnBack)){
+										btnBack.c=[200,200,200];
+									}
+									
+									if(jt.mPress(btnBack) || jt.tPress(btnBack)){
+										if(this.win){
+											this.wins++;
+										}else if(this.lose){
+											this.losses++;
+										}
+										clientObj.wins=this.wins;
+										clientObj.losses=this.losses;
+										localStorage.setItem('wins', clientObj.wins);
+										localStorage.setItem('losses', clientObj.losses);
+										localStorage.setItem('name', clientObj.name);
+										clientObj.coins=0;
+										this.state="menu"
+										jt.stopPlay("sabotage");
+										this.win=false;
+										this.lose=false;
+										this.started=false;
+										this.inviteSent=undefined;
+										this.inviteReceived=undefined;
+										app.accepted=false;
+										app.time=0;
+										app.delaySent=false;
+										app.delay=0;
+									}
+									
+									jt.rect(btnBack.x,btnBack.y,btnBack.w,btnBack.h,btnBack.c)
+									jt.text("Back",50,35,"black","center")	
+								}
+								
+								jt.fontSize(16);
+							
+								jt.drawPart();
+								
+								if(this.sabotage>0){this.sabotage--;}
+								if(this.sabotageEne>0){this.sabotageEne--;}
+									
+									
+								//Sabotage btn
+							
+								var btnAtk={x:jt.w()/4-100,y:jt.h()/2+50,w:200,h:50,c:[150,150,150]};
+								
+								
+								if(this.sabotage<=0 && bought<=2 && !this.win && !this.lose){
+									if(jt.mIn(btnAtk)){
+										btnAtk.c=[200,200,200];
+									}
+									if(jt.mPress(btnAtk) || jt.tPress(btnAtk)){
+										socket.emit("sabotage",this.playing);
+										addMessage(clientObj.name+" used a sabotage!",true)
+										bought++;
+										this.sabotageEne=this.sabotageMax;
+										jt.stopPlay("sabotage")
+										jt.shake(5);
+										addPart(btnAtk.x,btnAtk.y,btnAtk.w,btnAtk.h,3)
+									}
+									
+									jt.shape(btnAtk)
+									
+									jt.text("Sabotage 5s ("+(3-bought)+" left)",btnAtk.x+btnAtk.w/2,btnAtk.y+btnAtk.h/2-jt.fontSize()/2,"black","center")
+								}
+								
+								
+								//Upgrade
+								
+								if(this.sabotage<=0 && !this.win && !this.lose){
+									if(cost<=100){
+									
+										var btnUp={x:jt.w()/4-100,y:jt.h()/2-25,w:200,h:50,c:[150,150,150]};
+										
+										if(jt.mIn(btnUp)){
+											btnUp.c=[200,200,200];
+										}
+										if(coins>=cost){
+											if(jt.mPress(btnUp) || jt.tPress(btnUp)){
+												socket.emit("upgrade",this.playing,cost);
+												coins-=cost;
+												addChange(-cost,true)
+												addMessage(clientObj.name+" upgraded!",true)
+												coinsPer+=rate;
+												cost=cost*2;
+												jt.stopPlay("upgrade")
+												jt.shake(5);
+
+												addPart(btnUp.x,btnUp.y,btnUp.w,btnUp.h,3)
+											}
+										}else{
+											btnUp.c=[100,100,100]
+										}
+										jt.shape(btnUp)
+										
+										jt.text("Upgrade +"+rate+"/s ("+cost+" coins)",btnUp.x+btnUp.w/2,btnUp.y+btnUp.h/2-jt.fontSize()/2,"black","center")
+									}
+								}
+								
+								
+								//Steal half
+						
+								if(this.sabotage<=0 && bought2<=1 && !this.win && !this.lose){
+									var btnHalf={x:jt.w()/4-100,y:jt.h()/2+125,w:200,h:50,c:[150,150,150]};
+									
+									if(jt.mIn(btnHalf)){
+										btnHalf.c=[200,200,200];
+									}
+									
+									if(jt.mPress(btnHalf) || jt.tPress(btnHalf)){
+										var half=jt.round(coinsEne/2,0);
+										socket.emit("steal",this.playing,half);
+										coins+=half;
+										addChange(half,true)
+										addChange(-half,false)
+										addMessage(clientObj.name+" stole half!",true)
+										bought2++;
+										jt.stopPlay("steal")
+										jt.shake(5);
+										addPart(btnHalf.x,btnHalf.y,btnHalf.w,btnHalf.h,3)
+									}
+									jt.shape(btnHalf)
+									
+									jt.text("Steal half ("+(2-bought2)+" left)",btnHalf.x+btnHalf.w/2,btnHalf.y+btnHalf.h/2-jt.fontSize()/2,"black","center")
+								}
+									
+									
+								//Draw other player's stats
+								jt.text("Upgrade: "+costEne+" coins",jt.w()/4*3,jt.h()/2-jt.fontSize()/2,"black","center")
+								jt.text("Sabotage: "+(3-boughtEne)+" left",jt.w()/4*3,jt.h()/2+75-jt.fontSize()/2,"black","center")
+								jt.text("Steal: "+(2-bought2Ene)+" left",jt.w()/4*3,jt.h()/2+150-jt.fontSize()/2,"black","center")
+								
+									
+								//Draw coins
+								coins=jt.round(coins,1)
+								coinsPer=jt.round(coinsPer,1)
+								coinsEne=jt.round(coinsEne,1)
+								coinsPerEne=jt.round(coinsPerEne,1)
+								
+								if(coins<0){coins=0;}
+								if(coinsEne<0){coinsEne=0;}
+								
+								if(coins>=100){
+									this.win=true;
+								}
+								if(coinsEne>=100){
+									this.lose=true;
+								}
+								
+								jt.text("Coins: "+coins+"/100",jt.w()/4,jt.h()/3-50,"black","center");
+								jt.text("Rate: "+coinsPer+"/s",jt.w()/4,jt.h()/3,"black","center");
+								
+								jt.text("Coins: "+coinsEne+"/100",jt.w()/4*3,jt.h()/3-50,"black","center");
+								jt.text("Rate: "+coinsPerEne+"/s",jt.w()/4*3,jt.h()/3,"black","center");
+								
+								
+								jt.fontSize(16);
+								if(this.message!=undefined){
+									var x=jt.w()/4;
+									var alpha=(this.timerMax-this.message.timer)/this.timerMax;
+									var y=50;
+									var text=this.message.msg
+									jt.text(text,x,y,[0,0,0,alpha],"center")
+									
+									this.message.timer++;
+									if(this.message.timer>=this.messageTimerMax){
+										this.message=undefined
+									}
+								}
+								if(this.messageEne!=undefined){
+									var x=jt.w()/4*3;
+									var alpha=(this.timerMax-this.messageEne.timer)/this.timerMax;
+									var y=50;
+									var text=this.messageEne.msg
+									jt.text(text,x,y,[0,0,0,alpha],"center")
+									
+									this.messageEne.timer++;
+									if(this.messageEne.timer>=this.messageTimerMax){
+										this.messageEne=undefined
+									}
+								}
+								jt.fontSize(12);
+								if(this.change!=undefined){
+									this.change.timer++;
+									
+									var x=jt.w()/4;
+									var alpha=(this.timerMax-this.change.timer)/this.timerMax;
+									var c=[255,0,0,alpha]
+									var y=jt.h()/3-50-jt.fontSize()*1.2;
+									var text=this.change.num+"";
+									if(this.change.num>0){
+										text="+"+this.change.num;
+										c=[0,255,0,alpha]
+									}else if(this.change.num==0){
+										c=[127,127,127,alpha]
+									}
+									if(this.change.rate!=undefined){
+										y=jt.h()/3-jt.fontSize()*1.2;
+									}
+									jt.text(text,x,y,c,"center")
+									
+									if(this.change.timer>=this.timerMax){
+										this.change=undefined
+									}
+								}
+								if(this.changeEne!=undefined){
+									this.changeEne.timer++;
+									
+									var x=jt.w()/4*3;
+									var alpha=(this.timerMax-this.changeEne.timer)/this.timerMax;
+									var c=[255,0,0,alpha]
+									var y=jt.h()/3-50-jt.fontSize()*1.2;
+									var text=this.changeEne.num+"";
+									if(this.changeEne.num>0){
+										text="+"+this.changeEne.num;
+										c=[0,255,0,alpha]
+									}else if(this.changeEne.num==0){
+										c=[127,127,127,alpha]
+									}
+									if(this.changeEne.rate!=undefined){
+										y=jt.h()/3-jt.fontSize()*1.2;
+									}
+									jt.text(text,x,y,c,"center")
+									
+									if(this.changeEne.timer>=this.timerMax){
+										this.changeEne=undefined
+									}
+								}
+								
+								if(this.sabotage>0 && !this.win && !this.lose){
+									jt.fontSize(24);
+									jt.text("Sabotaged!",jt.w()/4,jt.h()/2+30,"black","center")
+								}
+								
+								if(this.sabotageEne>0 && !this.win && !this.lose){
+									jt.fontSize(24);
+									jt.text("Sabotaged!",jt.w()*(3/4),jt.h()/2+30,"black","center")
+								}
+							}
+						}
+						
+					}else if(this.state=="secret"){
+						//logic
+						var btn1={x:jt.w()/2-75,y:jt.h()/2-25,w:50,h:50}
+						var btn2={x:jt.w()/2+25,y:jt.h()/2-25,w:50,h:50}
+						if(jt.mPress(btn1) || jt.tPress(btn1)){
+							this.secretNumbers[0]++;
+						}
+						if(jt.mPress(btn2) || jt.tPress(btn2)){
+							this.secretNumbers[1]++;
+						}
+						this.secretNumbers[0]=jt.wrapIndex(this.secretNumbers[0],0,9)
+						this.secretNumbers[1]=jt.wrapIndex(this.secretNumbers[1],0,9)
+						
+						
+						
+						var btn={x:jt.w()/2-100,y:jt.h()/2+50,w:200,h:50,c:[150,150,150]}
+						if(jt.mIn(btn)){
+							btn.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btn) || jt.tPress(btn)){
+							if(this.secretNumbers[0]==parseInt(this.version[0]) && this.secretNumbers[1]==parseInt(this.version[2])){
+								this.state="secret2";
+								jt.stopPlay("steal");
+							}else{
+								this.state="menu";
+								jt.stopPlay("sabotage");
+							}
+							
+						}
+						jt.rect(btn);
+						jt.fontSize(24);
+						jt.text("Submit",btn.x+btn.w/2,btn.y+btn.h/2-jt.fontSize()/2,"black","center")
+					
+						//draw
+						jt.fontSize(64);
+						jt.text("SECRET 1",jt.w()/2,20+jt.waveY()*10,"black","center");
+						
+						jt.fontSize(16);
+						jt.text("(You can complete these with the mouse or by touching the screen)",jt.w()/2,jt.h()/4+30,"black","center");
+						
+						jt.fontSize(24);
+						jt.text("Complete these puzzles to get a reward",jt.w()/2,jt.h()/4,"black","center");
+						
+						jt.text(this.secretNumbers[0],jt.w()/2-50,jt.h()/2,"black","center");
+						jt.text("v",jt.w()/2-100,jt.h()/2,"black","center");
+						jt.text(".",jt.w()/2,jt.h()/2,"black","center");
+						jt.text(this.secretNumbers[1],jt.w()/2+50,jt.h()/2,"black","center");
+						
+						
+						var btnBack={x:0,y:25,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBack)){
+							btnBack.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBack) || jt.tPress(btnBack)){
+							this.state="menu";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBack.x,btnBack.y,btnBack.w,btnBack.h,btnBack.c)
+						jt.text("Back",50,35,"black","center")
+					}else if(this.state=="secret2"){
+						//logic
+					
+						//draw
+						jt.fontSize(64);
+						jt.text("SECRET 2",jt.w()/2,20+jt.waveY()*10,"black","center");
+						
+						jt.fontSize(24);
+						
+						var btn={x:50,y:jt.h()/2,w:100,h:50,c:[150,150,150]}
+						var btnEnd={x:jt.w()-150,y:jt.h()/2,w:100,h:50,c:[150,150,150]}
+						if(jt.mIn(btn)){
+							btn.c=[200,200,200]
+						}
+						if(jt.mIn(btnEnd)){
+							btnEnd.c=[200,200,200]
+						}
+						if(this.secret2Points!=undefined){
+							if(jt.mPress() || jt.tPress()){
+								this.secret2Points.push([jt.mX(),jt.mY()])
+							}
+						}
+						
+						if((jt.mPress(btn) || jt.tPress(btn)) && this.secret2Points==undefined){
+							this.secret2Points=[[jt.mX(),jt.mY()]]
+							jt.stopPlay("sabotage");
+							
+						}
+						
+						if((jt.mPress(btnEnd) || jt.tPress(btnEnd)) && this.secret2Points!=undefined){
+							this.state="secret3";
+							jt.stopPlay("sabotage");
+							
+						}
+						
+						var rects=[
+							{x:0,y:100,w:jt.w(),h:5,c:"red"},
+							{x:0,y:350,w:jt.w(),h:5,c:"red"},
+							{x:jt.w()/2,y:jt.h()/2-50,w:50,h:150,c:"red"},
+							{x:jt.w()*(2/3),y:jt.h()/2-50,w:200,h:50,c:"red"},
+							{x:jt.w()*(2/3),y:jt.h()/2+50,w:200,h:50,c:"red"},
+							{x:jt.w()*(2/3),y:jt.h()/2,w:10,h:20,c:"red"},
+							{x:jt.w()*(2/3),y:jt.h()/2+30,w:10,h:20,c:"red"},
+						]
+						
+						if(this.secret2Points==undefined){
+							jt.rect(btn);
+							jt.fontSize(24);
+							jt.text("Start",btn.x+btn.w/2,btn.y+btn.h/2-jt.fontSize()/2,"black","center")
+						}else{
+							for(var i=0;i<this.secret2Points.length;i++){
+								var point=this.secret2Points[i];
+								var next=this.secret2Points[i];
+								if(i==this.secret2Points.length-1){
+									next=[jt.mX(),jt.mY()];
+								}else{
+									next=this.secret2Points[i+1];
+								}
+								var line={x1:point[0],y1:point[1],x2:next[0],y2:next[1],w:1,c:"blue"}
+								for(var j=0;j<rects.length;j++){
+									if(jt.cRectLine(rects[j],line)){
+										this.state="menu";
+										jt.stopPlay("sabotage");
+									}
+								}
+								jt.line(line);
+							}
+							
+							for(var i=0;i<rects.length;i++){
+								jt.rect(rects[i]);
+							}
+							
+							jt.rect(btnEnd);
+							jt.fontSize(24);
+							jt.text("End",btnEnd.x+btnEnd.w/2,btnEnd.y+btnEnd.h/2-jt.fontSize()/2,"black","center")
+						}
+						
+						
+						var btnBack={x:0,y:25,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBack)){
+							btnBack.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBack) || jt.tPress(btnBack)){
+							this.state="menu";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBack.x,btnBack.y,btnBack.w,btnBack.h,btnBack.c)
+						jt.text("Back",50,35,"black","center")
+					}else if(this.state=="secret3"){
+						//logic
+						var btn={x:50,y:jt.h()/2,w:100,h:50,c:[150,150,150]}
+						var btnEnd={x:jt.w()-150,y:jt.h()/2,w:100,h:50,c:[150,150,150]}
+						if(jt.mIn(btn)){
+							btn.c=[200,200,200]
+						}
+						if(jt.mIn(btnEnd)){
+							btnEnd.c=[200,200,200]
+						}
+						
+						if((jt.mPress(btn) || jt.tPress(btn)) && this.secret3Start==false){
+							this.secret3Start=true;
+							jt.stopPlay("sabotage");
+						}
+						
+						if((jt.mPress(btnEnd) || jt.tPress(btnEnd)) && this.secret3Start==true){
+							this.state="secret4";
+							jt.stopPlay("sabotage");
+							
+						}
+						
+						var rects=[
+							{x:0,y:100,w:jt.w(),h:5,c:"red"},
+							{x:0,y:350,w:jt.w(),h:5,c:"red"},
+							{x:jt.w()/2-5,y:100,w:10,h:250,c:"red"},
+						]
+						
+						if(this.secret3Start==false){
+							jt.rect(btn);
+							jt.fontSize(24);
+							jt.text("Start",btn.x+btn.w/2,btn.y+btn.h/2-jt.fontSize()/2,"black","center")
+						}else{
+							
+							for(var i=0;i<rects.length;i++){
+								jt.rect(rects[i]);
+								if(jt.cRectPoint(rects[i],{x:jt.mX(),y:jt.mY()})){
+									this.state="menu";
+									jt.stopPlay("sabotage");
+								}
+							}
+							
+							jt.rect(btnEnd);
+							jt.fontSize(24);
+							jt.text("End",btnEnd.x+btnEnd.w/2,btnEnd.y+btnEnd.h/2-jt.fontSize()/2,"black","center")
+						}
+					
+						//draw
+						jt.fontSize(64);
+						jt.text("SECRET 3",jt.w()/2,20+jt.waveY()*10,"black","center");
+						
+						jt.fontSize(24);
+						var btnBack={x:0,y:25,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBack)){
+							btnBack.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBack) || jt.tPress(btnBack)){
+							this.state="menu";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBack.x,btnBack.y,btnBack.w,btnBack.h,btnBack.c)
+						jt.text("Back",50,35,"black","center")
+					}else if(this.state=="secret4"){
+						//logic
+					
+						//draw
+						jt.fontSize(64);
+						jt.text("REWARD",jt.w()/2,20+jt.waveY()*10,"black","center");
+						
+						jt.fontSize(24);
+						var btnBack={x:0,y:25,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBack)){
+							btnBack.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBack) || jt.tPress(btnBack)){
+							this.state="menu";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBack.x,btnBack.y,btnBack.w,btnBack.h,btnBack.c)
+						jt.text("Back",50,35,"black","center")
+						
+						jt.text("Change your name's color:",jt.w()/2,150,"black","center");
+						jt.text(clientObj.name,jt.w()/2,200,clientObj.c,"center");
+						
+						//buttons
+						
+						var btnBlack={x:46,y:250,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBlack)){
+							btnBlack.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBlack) || jt.tPress(btnBlack)){
+							clientObj.c="black";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBlack.x,btnBlack.y,btnBlack.w,btnBlack.h,btnBlack.c)
+						jt.text("Black",96,260,"black","center")
+						
+						
+						
+						var btnRed={x:148,y:250,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnRed)){
+							btnRed.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnRed) || jt.tPress(btnRed)){
+							clientObj.c="red";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnRed.x,btnRed.y,btnRed.w,btnRed.h,btnRed.c)
+						jt.text("Red",198,260,"red","center")
+									
+						
+						
+						var btnBlue={x:250,y:250,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnBlue)){
+							btnBlue.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnBlue) || jt.tPress(btnBlue)){
+							clientObj.c="blue";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnBlue.x,btnBlue.y,btnBlue.w,btnBlue.h,btnBlue.c)
+						jt.text("Blue",300,260,"blue","center")
+															
+						
+						
+						var btnGreen={x:352,y:250,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnGreen)){
+							btnGreen.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnGreen) || jt.tPress(btnGreen)){
+							clientObj.c="green";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnGreen.x,btnGreen.y,btnGreen.w,btnGreen.h,btnGreen.c)
+						jt.text("Green",402,260,"green","center")
+																					
+						
+						
+						var btnGold={x:454,y:250,w:100,h:40,c:[150,150,150]}
+						if(jt.mIn(btnGold)){
+							btnGold.c=[200,200,200]
+						}
+						
+						if(jt.mPress(btnGold) || jt.tPress(btnGold)){
+							clientObj.c="gold";
+							jt.stopPlay("sabotage");
+						}
+						
+						jt.rect(btnGold.x,btnGold.y,btnGold.w,btnGold.h,btnGold.c)
+						jt.text("Yellow",504,260,"gold","center")
+					}
+					
+					if(this.disconnected!=undefined){
+						
+						app.state="menu";
+						app.accepted=false;
+						app.time=0;
+						app.delaySent=false;
+						app.delay=0;
+						app.playing=undefined;
+						app.inviteSent=undefined;
+						app.inviteReceived=undefined;
+						
+						delete serverObjs[this.disconnected];
+						
+						this.disconnected=undefined;
+						jt.stopPlay("sabotage");
+					}
+					
+					
+					
+					
+					/*
+					var keys = Object.keys(serverObjs);
+					
+					for (var i = 0; i < keys.length; i++) {
+						var val = serverObjs[keys[i]];
+						// use val
+						if(name!=""){
+							jt.text(val.name+" "+val.message,val.x+w/2,val.y-h*2,val.c,"center")
+							jt.rect(val.x,val.y,w,h,val.c)
+						}
+					}
+					*/
+				}
+			}
+			
+			function addPart(x,y,w,h,num){
+				if(num==undefined){num=1;}
+				for(var i=0;i<num;i++){
+					var part={}
+					part.x=jt.random(x,x+w);
+					part.y=jt.random(y,y+h);
+					part.w=10;
+					part.h=10;
+					part.vX=jt.random(-5,5,0.2)
+					part.vY=jt.random(-5,5,0.2)
+					part.c=[200,200,200];
+					part.alpha=1;
+					part.alphaRate=-0.01;
+					part.frames=100;
+					jt.addPart(part);
+				}
+			}
+			
+			function addChange(num,own,rate){
+				var change={
+					num:num,
+					rate:rate,
+					timer:0,
+				}
+				if(own){
+					app.change=change;
+				}else{
+					app.changeEne=change;
+				}
+			}
+			
+			function addMessage(msg,own){
+				var message={
+					msg:msg,
+					timer:0,
+				}
+				if(own){
+					app.message=message;
+				}else{
+					app.messageEne=message;
+				}
+			}
+			
+			//define the jt object on a global scale
+			var jt=undefined;
+			
+			//you can also use $(document).ready(function(){}); with jQuery
+			$(document).ready(function(){
+				//parameters of the JT object:
+				//id of the canvas
+				//width
+				//height
+				//frames per second
+				//setup function name
+				//update function name
+				//object which has the function name
+				//mobile audio button size (0 for none)
+				//fullScreen button on mobile
+				jt=new JT("can",app.w,app.h,60,'setup','update','app',0,true);
+				
+				//jt.loadImage("image.png","name")
+				var path="sounds/"
+				jt.loadSound(path+"sabotage.mp3","sabotage")
+				jt.loadSound(path+"steal.mp3","steal")
+				jt.loadSound(path+"upgrade.mp3","upgrade")
+				//jt.loadAnim("src.png","name",number of frames,fps);
+			})
